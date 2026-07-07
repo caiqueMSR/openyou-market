@@ -596,7 +596,7 @@ let isSaving=false;
 let intencionalClear=false; // true quando o próprio usuário pediu para limpar algo (bypassa a proteção anti-perda-de-dados)
 // Termos de busca por aba — guardar em JS, não no DOM
 const DEVICE_ID='dev_'+Math.random().toString(36).slice(2,8);
-const APP_VERSION=24; // v24: adiciona selo de versão visível no topo para confirmar deploy
+const APP_VERSION=25; // v25: corrige botão "Confirmar todos" que às vezes se comportava como "Cancelar"
 // Termos de busca por aba — guardar em JS, não no DOM
 const buscas={viena:'',mirella:'',montana:'',flash:'',compras:'',pendentes:'',estoque:'','estoque-flash':'',dash:'',validades:''};
 
@@ -979,8 +979,6 @@ function renderLoja(m,loja){
   m.innerHTML=html;
   const ta=document.getElementById('chatInput');
   if(ta&&draftTexts[loja])ta.value=draftTexts[loja];
-  // Sempre ligar eventos do preview (confirmar, cancelar, remover)
-  if(previewItems.length) bindPreviewRm();
 }
 
 function renderPreview(loja){
@@ -991,39 +989,18 @@ function renderPreview(loja){
       <span style="font-size:11px;color:var(--green);margin-left:4px;">${CATS[it.categoria]?.icon||'🏪'} ${it.categoria}</span>
       <span class="prev-qty" style="margin-left:auto">${it.qtd}</span>
       <span class="prev-unit">${it.unidade}</span>
-      <button class="prev-rm" data-i="${i}">✕</button>
+      <button class="prev-rm" onclick="removerPreviewItem(${i})">✕</button>
     </div>`).join('')}
     <div class="preview-actions">
-      <button class="btn-confirm" id="btnConfirmar" data-loja="${loja}">✓ Confirmar todos</button>
-      <button class="btn-cancel" id="btnCancelar">Cancelar</button>
+      <button class="btn-confirm" onclick="confirmarPreview('${loja}')">✓ Confirmar todos</button>
+      <button class="btn-cancel" onclick="cancelarPreview()">Cancelar</button>
     </div>
   </div>`;
 }
-function bindPreviewRm(){
-  // Botões remover item do preview
-  document.querySelectorAll('.prev-rm').forEach(btn=>{
-    btn.onclick=e=>{
-      e.stopPropagation();
-      previewItems.splice(parseInt(btn.dataset.i),1);
-      if(!previewItems.length)cancelarPreview();
-      else render();
-    };
-  });
-  // Botão CONFIRMAR — via addEventListener para garantir funcionamento
-  const btnConf=document.getElementById('btnConfirmar');
-  if(btnConf){
-    btnConf.onclick=null; // limpar handler anterior
-    btnConf.addEventListener('click',()=>{
-      const loja=btnConf.dataset.loja;
-      if(loja) confirmarPreview(loja);
-    },{once:true});
-  }
-  // Botão CANCELAR
-  const btnCanc=document.getElementById('btnCancelar');
-  if(btnCanc){
-    btnCanc.onclick=null;
-    btnCanc.addEventListener('click',cancelarPreview,{once:true});
-  }
+function removerPreviewItem(i){
+  previewItems.splice(i,1);
+  if(!previewItems.length)cancelarPreview();
+  else render();
 }
 
 // ── RENDER COMPRAS (consolidado + check + preço) ──
@@ -2307,7 +2284,7 @@ function remValidade(id){
   showToast('Removido.');
 }
 window.navTo=navTo;window.goTab=navTo;window.toggleSidebar=toggleSidebar;window.closeSidebar=closeSidebar;window.processarInput=processarInput;window.confirmarPreview=confirmarPreview;
-window.cancelarPreview=cancelarPreview;window.remItem=remItem;window.limparLoja=limparLoja;
+window.cancelarPreview=cancelarPreview;window.remItem=remItem;window.limparLoja=limparLoja;window.removerPreviewItem=removerPreviewItem;
 window.gerarConsolidado=gerarConsolidado;window.toggleCheck=toggleCheck;window.marcarPendente=marcarPendente;window.resetCheck=resetCheck;
 window.copiarLista=copiarLista;window.abrirWhatsApp=abrirWhatsApp;window.exportarLojaWhatsApp=exportarLojaWhatsApp;
 window.handleKey=handleKey;window.saveDraft=saveDraft;
