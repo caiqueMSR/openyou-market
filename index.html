@@ -592,9 +592,10 @@ let estoqueFlash=[];
 let precoHistorico={}; // {nomeNormalizado: [{semana, preco, data}]}
 let validades=[]; // [{id, nome, loja, validade(ISO), qtd, unidade}]
 let isSaving=false;
+let intencionalClear=false; // true quando o próprio usuário pediu para limpar algo (bypassa a proteção anti-perda-de-dados)
 // Termos de busca por aba — guardar em JS, não no DOM
 const DEVICE_ID='dev_'+Math.random().toString(36).slice(2,8);
-const APP_VERSION=21; // Versão oficial OpenYou Market
+const APP_VERSION=22; // v22: corrige bug que travava a limpeza de listas (bloqueio indevido do save)
 // Termos de busca por aba — guardar em JS, não no DOM
 const buscas={viena:'',mirella:'',montana:'',flash:'',compras:'',pendentes:'',estoque:'','estoque-flash':'',dash:'',validades:''};
 
@@ -659,6 +660,7 @@ function carregarDeObjeto(d){
 // ── VALIDAR se novo estado é seguro para salvar ──
 function validarParaSalvar(novo, atual){
   if(!atual) return true; // primeira vez, sem dados para comparar
+  if(intencionalClear) return true; // usuário pediu explicitamente para limpar — não bloquear
   const cs_novo = novo._checksum;
   const cs_atual = atual._checksum || {};
   
@@ -774,6 +776,7 @@ async function _doSave(){
     showToast('⚠️ Sem internet — salvo localmente', false);
   }finally{
     isSaving = false;
+    intencionalClear = false;
   }
 }
 
@@ -969,11 +972,12 @@ function renderLoja(m,loja){
   m.innerHTML=html;
   const ta=document.getElementById('chatInput');
   if(ta&&draftTexts[loja])ta.value=draftTexts[loja];
-  if(previewItems.length)bindPreviewRm();
+  // Sempre ligar eventos do preview (confirmar, cancelar, remover)
+  if(previewItems.length) bindPreviewRm();
 }
 
 function renderPreview(loja){
-  return`<div class="preview-box">
+  return`<div class="preview-box" id="previewBox" data-loja="${loja}">
     <div class="preview-title">✓ Confirmar itens — verifique as categorias</div>
     ${previewItems.map((it,i)=>`<div class="preview-item" id="prev-${i}">
       <span class="prev-name">${it.nome}</span>
@@ -983,12 +987,37 @@ function renderPreview(loja){
       <button class="prev-rm" data-i="${i}">✕</button>
     </div>`).join('')}
     <div class="preview-actions">
-      <button class="btn-confirm" onclick="confirmarPreview('${loja}')">✓ Confirmar todos</button>
-      <button class="btn-cancel" onclick="cancelarPreview()">Cancelar</button>
+      <button class="btn-confirm" id="btnConfirmar" data-loja="${loja}">✓ Confirmar todos</button>
+      <button class="btn-cancel" id="btnCancelar">Cancelar</button>
     </div>
   </div>`;
 }
-function bindPreviewRm(){document.querySelectorAll('.prev-rm').forEach(btn=>{btn.onclick=()=>{previewItems.splice(parseInt(btn.dataset.i),1);render();};});}
+function bindPreviewRm(){
+  // Botões remover item do preview
+  document.querySelectorAll('.prev-rm').forEach(btn=>{
+    btn.onclick=e=>{
+      e.stopPropagation();
+      previewItems.splice(parseInt(btn.dataset.i),1);
+      if(!previewItems.length)cancelarPreview();
+      else render();
+    };
+  });
+  // Botão CONFIRMAR — via addEventListener para garantir funcionamento
+  const btnConf=document.getElementById('btnConfirmar');
+  if(btnConf){
+    btnConf.onclick=null; // limpar handler anterior
+    btnConf.addEventListener('click',()=>{
+      const loja=btnConf.dataset.loja;
+      if(loja) confirmarPreview(loja);
+    },{once:true});
+  }
+  // Botão CANCELAR
+  const btnCanc=document.getElementById('btnCancelar');
+  if(btnCanc){
+    btnCanc.onclick=null;
+    btnCanc.addEventListener('click',cancelarPreview,{once:true});
+  }
+}
 
 // ── RENDER COMPRAS (consolidado + check + preço) ──
 function renderCompras(m){
@@ -1219,7 +1248,7 @@ function renderEstoque(m, tipo='casa'){
 
 // ── RENDER HISTÓRICO ──
 function renderHist(m){
-  let html=`<div class="hist-header"><div class="hist-header-title">📋 Histórico de Compras</div><div class="hist-header-sub">${historico.length} registro${historico.length!==1?'s':''}</div></div>`;
+  let html=`<div class="hist-header"><div class="hist-header-title">📋 Histórico de Compras</div><div class="hist-header-sub">${historico.length} registro${historico.length!==1?'s':''}</div>${historico.length?`<button class="btn-limpar-tudo" style="margin-top:8px" onclick="apagarHistoricoCompleto()">🗑 Apagar todo o histórico</button>`:''}</div>`;
   if(!historico.length){m.innerHTML=html+`<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhum histórico ainda.<br>Salve uma compra ou limpe uma lista.</div></div>`;return;}
   const sorted=[...historico].sort((a,b)=>b.dataTs-a.dataTs);
   const porData={};
@@ -1247,6 +1276,16 @@ function renderHist(m){
     html+=`</div>`;
   });
   m.innerHTML=html;
+}
+
+function apagarHistoricoCompleto(){
+  if(!historico.length)return;
+  if(!confirm(`Apagar TODOS os ${historico.length} registros do histórico?\nEssa ação não pode ser desfeita.`))return;
+  if(!confirm('Confirma mesmo? O histórico será apagado permanentemente.'))return;
+  historico=[];
+  intencionalClear=true;
+  salvar(true);render();
+  showToast('✓ Histórico apagado.');
 }
 
 // ── BUSCA — usa estado JS, não re-render completo ──
@@ -1504,6 +1543,7 @@ function limparLoja(loja){
   if(!confirm(`Limpar lista de ${LNOMES[loja]}? Será salvo no histórico.`))return;
   historico.push({id:'h'+Date.now(),dataTs:Date.now(),loja,tipo:'lista',itens:estado[loja].map(it=>({...it,preco:0})),total:0});
   estado[loja]=[];previewItems=[];
+  intencionalClear=true;
   salvar(true);updateBadges();render();
   showToast('Lista limpa e salva no histórico.');
 }
@@ -1519,6 +1559,7 @@ function gerarConsolidado(){
         if(!confirm('Todas as listas estão vazias.\nA lista consolidada atual NÃO foi salva no histórico.\nDeseja zerar mesmo assim?'))return;
       }
       consolidado=[];checklist={};
+      intencionalClear=true;
       salvar(true);render();
       showToast('Consolidado zerado.');
     }else{
@@ -2264,7 +2305,7 @@ window.filtrarEstoque=filtrarEstoque;window.limparBuscaEstoque=limparBuscaEstoqu
 window.filtrarEstoqueFlash=filtrarEstoqueFlash;window.limparBuscaEstoqueFlash=limparBuscaEstoqueFlash;
 window.filtrarPendentes=filtrarPendentes;window.limparBuscaPendentes=limparBuscaPendentes;
 window.updatePreco=updatePreco;window.salvarCompraNoHistorico=salvarCompraNoHistorico;window.copiarPendentes=copiarPendentes;window.exportarPendentesWhatsApp=exportarPendentesWhatsApp;
-window.toggleHistDetail=toggleHistDetail;
+window.toggleHistDetail=toggleHistDetail;window.apagarHistoricoCompleto=apagarHistoricoCompleto;
 window.abrirEditarItem=abrirEditarItem;window.selecionarCatModal=selecionarCatModal;
 window.salvarEdicao=salvarEdicao;window.fecharModal=fecharModal;
 window.abrirAddEstoque=abrirAddEstoque;window.ajustarEstoque=ajustarEstoque;window.remEstoque=remEstoque;
