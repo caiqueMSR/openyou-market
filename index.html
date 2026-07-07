@@ -391,6 +391,7 @@ select.modal-input{cursor:pointer;}
   </div>
   <div style="display:flex;align-items:center;gap:8px">
     <div class="wk-badge" id="wkBadge"></div>
+    <div style="font-size:10px;color:#999;opacity:.7" id="versaoBadge"></div>
     <div class="sync-dot" id="syncDot"></div>
   </div>
 </div>
@@ -595,7 +596,7 @@ let isSaving=false;
 let intencionalClear=false; // true quando o próprio usuário pediu para limpar algo (bypassa a proteção anti-perda-de-dados)
 // Termos de busca por aba — guardar em JS, não no DOM
 const DEVICE_ID='dev_'+Math.random().toString(36).slice(2,8);
-const APP_VERSION=22; // v22: corrige bug que travava a limpeza de listas (bloqueio indevido do save)
+const APP_VERSION=24; // v24: adiciona selo de versão visível no topo para confirmar deploy
 // Termos de busca por aba — guardar em JS, não no DOM
 const buscas={viena:'',mirella:'',montana:'',flash:'',compras:'',pendentes:'',estoque:'','estoque-flash':'',dash:'',validades:''};
 
@@ -732,6 +733,7 @@ function dadosMaisRecentes(local, firebase){
 // ════════════════════════════════════════════════════════════
 
 function salvar(immediate=false){
+  window._lastLocalChangeAt = Date.now(); // marca que houve mudança feita aqui no aparelho agora
   if(saveTimer) clearTimeout(saveTimer);
   if(immediate){ _doSave(); }
   else { saveTimer = setTimeout(_doSave, 800); }
@@ -817,8 +819,13 @@ function iniciarSync(){
       // ESCOLHER dados mais recentes (local vs Firebase)
       const dadosLocais2 = lerLocal();
       const melhor = dadosMaisRecentes(dadosLocais2, dadosFb);
-      
-      if(melhor){
+
+      // GUARDA: se o usuário mexeu no app agora mesmo (últimos 3s), não deixa
+      // o retorno do Firebase (que pode ainda estar com a versão anterior)
+      // sobrescrever a tela recém-atualizada.
+      const mudancaMuitoRecente = window._lastLocalChangeAt && (Date.now()-window._lastLocalChangeAt < 3000);
+
+      if(melhor && !mudancaMuitoRecente){
         carregarDeObjeto(melhor);
         
         // Se local era mais recente, re-sincronizar com Firebase
@@ -831,7 +838,7 @@ function iniciarSync(){
       setSyncStatus('ok');
       updateBadges();
       if(!window._firstLoadDone){window._firstLoadDone=true;}
-      render();
+      if(!mudancaMuitoRecente) render();
       
     }else{
       // Documento não existe — criar com dados locais se existirem
@@ -1530,7 +1537,12 @@ function confirmarPreview(loja){
     else{estado[loja].push({...item});novos++;}
   });
   previewItems=[];draftTexts[loja]='';
-  salvar(true);updateBadges();render();
+  salvar(true);updateBadges();
+  aba=loja; // garante que a aba ativa é a mesma loja confirmada
+  render();
+  // Limpa a caixinha de digitação diretamente, sem depender do próximo render
+  const ta=document.getElementById('chatInput');
+  if(ta)ta.value='';
   const msg=novos&&atualizados?`✓ ${novos} novo(s) + ${atualizados} atualizado(s)`:novos?`✓ ${novos} adicionado${novos!==1?'s':''}`:` ✓ ${atualizados} atualizado${atualizados!==1?'s':''}`;
   showToast(msg);
 }
@@ -2317,6 +2329,7 @@ window.abrirAddValidade=abrirAddValidade;window.salvarValidade=salvarValidade;wi
 
 // ── INIT ──
 document.getElementById('wkBadge').textContent=getSemana();
+document.getElementById('versaoBadge').textContent='v'+APP_VERSION;
 
 // Salvar rascunho ao sair da página ou minimizar (iOS Safari)
 window.addEventListener('beforeunload',()=>{
