@@ -614,10 +614,12 @@ function salvar(immediate=false){
   if(immediate){_doSave();}else{saveTimer=setTimeout(_doSave,500);}
 }
 async function _doSave(){
+  // Não salvar antes do primeiro load do Firebase — evita sobrescrever com dados vazios
+  if(!window._firstLoadDone)return;
   if(isSaving)return;
   isSaving=true;setSyncStatus('syncing');
   try{
-    await setDoc(DOC,{estado,consolidado,checklist,draftTexts,historico,estoque,estoqueFlash,precoHistorico,validades,updatedAt:Date.now(),deviceId:DEVICE_ID,appVersion:APP_VERSION},{merge:false});
+    await setDoc(DOC,{estado,consolidado,checklist,draftTexts,historico,estoque,estoqueFlash,precoHistorico,validades,updatedAt:Date.now(),deviceId:DEVICE_ID,appVersion:APP_VERSION},{merge:true});
     setSyncStatus('ok');
   }catch(e){
     console.error(e);setSyncStatus('error');
@@ -2091,7 +2093,7 @@ document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden'){
     const el=document.getElementById('chatInput');
     if(el&&LOJAS.includes(aba))draftTexts[aba]=el.value;
-    salvar(true); // salvar imediatamente
+    if(window._firstLoadDone)salvar(true); // só salva se Firebase já carregou
   }
 });
 
