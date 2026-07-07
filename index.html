@@ -785,14 +785,14 @@ function iniciarSync(){
   showLoader(true);
   
   // PASSO 1: Carregar localStorage imediatamente (sem esperar Firebase)
-  // Isso garante que o app funciona mesmo offline
+  // Usar setTimeout para garantir que todos os globals já foram expostos
   const dadosLocais = lerLocal();
   if(dadosLocais && dadosLocais.appVersion >= APP_VERSION){
     const carregou = carregarDeObjeto(dadosLocais);
     if(carregou){
       console.log('📱 Dados locais carregados enquanto Firebase conecta...');
-      updateBadges();
-      render();
+      // Aguardar globals serem expostos antes de renderizar
+      setTimeout(()=>{updateBadges();render();}, 0);
     }
   }
   
